@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>放射線科 災害初動アクションカード</title>
+<style>
+  :root{
+    --bg:#0B1018; --card:#141C2A; --card2:#1A2436; --line:#26344A;
+    --text:#EAF0F8; --sub:#90A3BC; --faint:#5B6C84;
+    --quake:#F5A524; --fire:#F0443C; --flood:#3D8BFD; --power:#9B7BF5;
+    --ok:#2FC57E; --ng:#F0443C; --accent:#F5A524;
+    --radius:18px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI",sans-serif;
+    display:flex; flex-direction:column; min-height:100dvh;
+    overscroll-behavior:none;
+  }
+  /* ───── ハザードストライプ（選択災害の色が反映される） ───── */
+  #stripe{height:6px; background:var(--line); transition:background .4s; flex:none}
+  /* ───── ヘッダー ───── */
+  header{
+    padding:14px 18px 10px; display:flex; align-items:center; justify-content:space-between; flex:none;
+  }
+  .ttl{font-size:13px; font-weight:700; letter-spacing:.14em; color:var(--sub)}
+  .ttl b{color:var(--text)}
+  #badges{display:flex; gap:6px}
+  .badge{
+    font-size:11px; font-weight:800; padding:4px 10px; border-radius:999px;
+    border:1.5px solid var(--line); color:var(--faint); letter-spacing:.08em;
+  }
+  .badge.on{color:#0B1018; border-color:transparent}
+  .badge.b1.on{background:var(--quake)} .badge.b2.on{background:var(--fire)}
+  .badge.b3.on{background:var(--flood)} .badge.b4.on{background:var(--power)}
+  /* ───── 進行バー ───── */
+  #prog{height:3px; background:var(--line); flex:none; margin:0 18px; border-radius:2px; overflow:hidden}
+  #progFill{height:100%; width:0%; background:var(--accent); transition:width .35s, background .4s}
+  /* ───── メイン ───── */
+  main{flex:1; display:flex; flex-direction:column; padding:10px 18px 16px; max-width:560px; width:100%; margin:0 auto; overflow-y:auto}
+  .eyebrow{font-size:12px; font-weight:800; letter-spacing:.2em; color:var(--accent); margin-bottom:10px; transition:color .4s}
+  .q{
+    font-size:clamp(24px,6.2vw,32px); font-weight:800; line-height:1.4;
+    margin-bottom:8px; word-break:keep-all; overflow-wrap:anywhere;
+  }
+  .note{
+    font-size:14px; color:var(--sub); line-height:1.7; margin-bottom:4px;
+  }
+  .alert{
+    margin-top:14px; padding:14px 16px; border-radius:14px;
+    background:var(--card2); border:1.5px solid var(--accent);
+    font-size:15px; font-weight:700; line-height:1.7;
+  }
+  .spacer{flex:1; min-height:18px}
+  /* ───── ボタン ───── */
+  .btns{display:flex; flex-direction:column; gap:12px; flex:none}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  button{
+    font-family:inherit; border:none; cursor:pointer; user-select:none;
+    border-radius:var(--radius); font-weight:800; color:var(--text);
+    transition:transform .06s, filter .15s;
+  }
+  button:active{transform:scale(.97); filter:brightness(1.2)}
+  .big{
+    min-height:64px; font-size:20px; background:var(--card); border:1.5px solid var(--line);
+  }
+  .big.yes{background:#16321F; border-color:var(--ok); color:#7CE3AE}
+  .big.no{background:#331A1E; border-color:#7A3A3F; color:#F2A0A0}
+  .big.ok{background:#16321F; border-color:var(--ok); color:#7CE3AE}
+  .big.ng{background:#3A1714; border-color:var(--ng); color:#FFB1A8}
+  .big.neutral{background:var(--card2); border-color:var(--line); color:var(--sub)}
+  .primary{
+    min-height:64px; font-size:19px; background:var(--accent); color:#0B1018; transition:background .4s;
+  }
+  .ghost{min-height:48px; font-size:15px; background:transparent; border:1.5px solid var(--line); color:var(--sub)}
+  /* ───── 災害選択 ───── */
+  .selGrid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px}
+  .selBtn{
+    min-height:108px; border-radius:var(--radius); border:2px solid var(--line);
+    background:var(--card); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  }
+  .selBtn .ico{font-size:30px}
+  .selBtn .nm{font-size:18px; font-weight:800}
+  .selBtn .num{font-size:11px; color:var(--faint); font-weight:700; letter-spacing:.15em}
+  .selBtn.on1{border-color:var(--quake); background:#2A2110}
+  .selBtn.on2{border-color:var(--fire); background:#2E1512}
+  .selBtn.on3{border-color:var(--flood); background:#101E33}
+  .selBtn.on4{border-color:var(--power); background:#1F1733}
+  /* ───── テンキー ───── */
+  .numVal{
+    font-size:48px; font-weight:800; text-align:center; min-height:64px;
+    letter-spacing:.05em; margin:6px 0 2px;
+  }
+  .numVal .unit{font-size:20px; color:var(--sub); font-weight:700}
+  .pad{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px}
+  .pad button{min-height:58px; font-size:24px; background:var(--card); border:1.5px solid var(--line)}
+  .pad .del{font-size:18px; color:var(--sub)}
+  /* ───── まとめ・報告 ───── */
+  .report{
+    background:var(--card); border:1.5px solid var(--line); border-radius:var(--radius);
+    padding:18px; margin-bottom:14px;
+  }
+  .report h2{font-size:15px; font-weight:800; letter-spacing:.12em; margin-bottom:12px; display:flex; align-items:center; gap:8px}
+  .rrow{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 2px; border-bottom:1px solid var(--line); font-size:16px;
+  }
+  .rrow:last-child{border-bottom:none}
+  .rrow .k{color:var(--sub); font-weight:700; font-size:14px}
+  .rrow .v{font-weight:800}
+  .v.statusOK{color:var(--ok)} .v.statusNG{color:var(--ng)}
+  .rrow.tap{cursor:pointer}
+  .rrow.tap .v::after{content:"›"; color:var(--faint); margin-left:8px; font-weight:400}
+  .editHint{font-size:12px; color:var(--faint); text-align:center; margin-bottom:14px}
+  .footMsg{
+    margin-top:4px; padding:14px; border-radius:14px; background:var(--card2);
+    font-size:15px; font-weight:800; text-align:center; line-height:1.6;
+    border:1.5px solid var(--accent);
+  }
+  .stamp{font-size:12px; color:var(--faint); text-align:right; margin-top:10px}
+  .copied{
+    position:fixed; left:50%; bottom:90px; transform:translateX(-50%);
+    background:var(--ok); color:#0B1018; font-weight:800; font-size:14px;
+    padding:10px 22px; border-radius:999px; opacity:0; pointer-events:none; transition:opacity .25s;
+  }
+  .copied.show{opacity:1}
+  /* ───── 戻る ───── */
+  #backBar{padding:0 18px 14px; max-width:560px; width:100%; margin:0 auto; flex:none}
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+
+<div id="stripe"></div>
+<header>
+  <div class="ttl">放射線科<b>　災害初動アクションカード</b></div>
+  <div id="badges">
+    <span class="badge b1">地震</span><span class="badge b2">火災</span>
+    <span class="badge b3">浸水</span><span class="badge b4">停電</span>
+  </div>
+</header>
+<div id="prog"><div id="progFill"></div></div>
+
+<main id="main"></main>
+<div id="backBar"></div>
+<div class="copied" id="copied">コピーしました</div>
+
+<script>
+"use strict";
+/* ================= 状態 ================= */
+const COLORS={1:"#F5A524",2:"#F0443C",3:"#3D8BFD",4:"#9B7BF5"};
+const NAMES={1:"地震",2:"火災",3:"浸水",4:"停電"};
+const DEVICES=["白コンセント","赤コンセント","CT","一般撮影","2カテ","3カテ","4カテ","5カテ","ポータブル","電子カルテ"];
+
+let S; // state
+function init(){
+  S={
+    disasters:[], injured:null, evac:null,
+    fireExt:"対象外", devMove:"対象外",
+    evacPt:null, evacStaff:null,
+    pt:null, staff:null,
+    dev:{}, // 機器名→正常/異常
+    queue:[], idx:0, history:[],
+  };
+  render(stepSelect);
+}
+
+/* ================= 共通描画 ================= */
+const main=document.getElementById("main");
+const backBar=document.getElementById("backBar");
+const stripe=document.getElementById("stripe");
+const progFill=document.getElementById("progFill");
+
+function setTheme(){
+  const ds=S.disasters;
+  if(ds.length===0){ stripe.style.background="var(--line)"; setAccent("#F5A524"); }
+  else if(ds.length===1){ stripe.style.background=COLORS[ds[0]]; setAccent(COLORS[ds[0]]); }
+  else{
+    const stops=ds.map((d,i)=>`${COLORS[d]} ${i/(ds.length-1)*100}%`).join(",");
+    stripe.style.background=`linear-gradient(90deg,${stops})`;
+    setAccent(COLORS[ds[0]]);
+  }
+  document.querySelectorAll(".badge").forEach((b,i)=>{
+    b.classList.toggle("on",ds.includes(i+1));
+  });
+}
+function setAccent(c){ document.documentElement.style.setProperty("--accent",c); }
+
+function setProg(){
+  const total=S.queue.length||1;
+  const p=Math.min(100, Math.round((S.idx)/total*100));
+  progFill.style.width=p+"%";
+}
+
+let currentStep=null;
+function render(stepFn, opt){
+  currentStep=stepFn;
+  main.innerHTML=""; backBar.innerHTML="";
+  stepFn(opt||{});
+  setTheme(); setProg();
+  main.scrollTop=0;
+}
+function el(tag,cls,html){const e=document.createElement(tag); if(cls)e.className=cls; if(html!=null)e.innerHTML=html; return e;}
+function eyebrow(t){main.appendChild(el("div","eyebrow",t));}
+function question(t){main.appendChild(el("div","q",t));}
+function note(t){main.appendChild(el("div","note",t));}
+function alertBox(t){main.appendChild(el("div","alert",t));}
+function spacer(){main.appendChild(el("div","spacer"));}
+function btn(label,cls,fn){const b=el("button",cls,label); b.onclick=fn; return b;}
+function backBtn(){
+  if(S.history.length===0) return;
+  const b=btn("← ひとつ戻る","ghost",()=>{ const prev=S.history.pop(); render(prev.fn,prev.opt); });
+  b.style.width="100%"; backBar.appendChild(b);
+}
+function go(nextFn,opt){
+  S.history.push({fn:currentStep,opt:null});
+  render(nextFn,opt);
+}
+
+/* ================= STEP0 災害選択 ================= */
+function stepSelect(){
+  eyebrow("STEP 0 ─ 災害種別");
+  question("発生した災害を<br>すべて選んでください");
+  note("複数選択できます（複合災害対応）");
+  const grid=el("div","selGrid");
+  const icons={1:"〰️",2:"🔥",3:"🌊",4:"⚡"};
+  [1,2,3,4].forEach(d=>{
+    const b=el("button","selBtn",
+      `<span class="ico">${icons[d]}</span><span class="nm">${NAMES[d]}</span><span class="num">0${d}</span>`);
+    if(S.disasters.includes(d)) b.classList.add("on"+d);
+    b.onclick=()=>{
+      if(S.disasters.includes(d)) S.disasters=S.disasters.filter(x=>x!==d);
+      else{ S.disasters.push(d); S.disasters.sort(); }
+      render(stepSelect);
+    };
+    grid.appendChild(b);
+  });
+  main.appendChild(grid);
+  spacer();
+  const wrap=el("div","btns");
+  const start=btn("確認を開始する","primary",()=>{
+    buildQueue();
+    S.history=[];
+    nextInQueue();
+  });
+  if(S.disasters.length===0){ start.disabled=true; start.style.opacity=.35; }
+  wrap.appendChild(start);
+  main.appendChild(wrap);
+}
+
+/* ================= キュー構築 ================= */
+function buildQueue(){
+  const q=[];
+  if(S.disasters.includes(1)) q.push(stepQuake);
+  if(S.disasters.includes(2)) q.push(stepFire);
+  if(S.disasters.includes(3)) q.push(stepFlood);
+  if(S.disasters.includes(4)) q.push(stepPower);
+  q.push(stepInjured);
+  q.push(stepEvacAsk);
+  S.queue=q; S.idx=0;
+}
+function nextInQueue(){
+  if(S.idx<S.queue.length){
+    const fn=S.queue[S.idx]; S.idx++;
+    go(fn);
+  }
+}
+
+/* ================= 固有質問 ================= */
+function stepQuake(o){
+  eyebrow("地震 ─ 固有確認");
+  question("揺れは<br>収まりましたか？");
+  if(o.retry) alertBox("揺れが収まるまで待機してください。低い姿勢を保ち、収まったら「はい」を押してください。");
+  spacer();
+  const w=el("div","btns row2");
+  w.appendChild(btn("はい","big yes",()=>nextInQueue()));
+  w.appendChild(btn("いいえ","big no",()=>render(stepQuake,{retry:true})));
+  main.appendChild(w); backBtn();
+}
+function stepFire(o){
+  eyebrow("火災 ─ 固有確認");
+  question("初期消火は<br>完了しましたか？");
+  if(o.retry) alertBox("安全を確保し、対応を継続してください。完了したら「完了」を押してください。");
+  spacer();
+  const w=el("div","btns");
+  const r=el("div","row2");
+  r.appendChild(btn("完了","big yes",()=>{S.fireExt="完了"; nextInQueue();}));
+  r.appendChild(btn("未完了","big no",()=>render(stepFire,{retry:true})));
+  w.appendChild(r);
+  w.appendChild(btn("初期消火は不要","big neutral",()=>{S.fireExt="不要"; nextInQueue();}));
+  main.appendChild(w); backBtn();
+}
+function stepFlood(o){
+  eyebrow("浸水 ─ 固有確認");
+  if(!o.moving){
+    question("浸水が<br>予想されますか？");
+    spacer();
+    const w=el("div","btns row2");
+    w.appendChild(btn("はい","big no",()=>render(stepFlood,{moving:true})));
+    w.appendChild(btn("いいえ","big yes",()=>{S.devMove="不要"; nextInQueue();}));
+    main.appendChild(w);
+  }else{
+    question("機器を2階図書室へ<br>移動してください");
+    alertBox("移動対象：ERポータブル／FPD用PC・FPD3枚／放射線科用PC／遠隔読影用PC");
+    spacer();
+    const w=el("div","btns");
+    w.appendChild(btn("移動を完了した","primary",()=>{S.devMove="実施"; nextInQueue();}));
+    main.appendChild(w);
+  }
+  backBtn();
+}
+function stepPower(o){
+  eyebrow("停電 ─ 固有確認");
+  if(!o.warn){
+    question("非常用電源（赤）のみで<br>稼働していますか？");
+    spacer();
+    const w=el("div","btns row2");
+    w.appendChild(btn("はい","big no",()=>render(stepPower,{warn:true})));
+    w.appendChild(btn("いいえ","big yes",()=>nextInQueue()));
+    main.appendChild(w);
+  }else{
+    question("不要な機器の使用を<br>控えてください");
+    alertBox("非常用電源のみの場合、装置の新規使用は控えてください。");
+    spacer();
+    const w=el("div","btns");
+    w.appendChild(btn("確認した","primary",()=>nextInQueue()));
+    main.appendChild(w);
+  }
+  backBtn();
+}
+
+/* ================= 共通フロー ================= */
+function stepInjured(){
+  eyebrow("共通確認 1/2");
+  question("負傷者は<br>いますか？");
+  spacer();
+  const w=el("div","btns row2");
+  w.appendChild(btn("いる","big no",()=>go(stepInjuredNum)));
+  w.appendChild(btn("いない","big yes",()=>{S.injured=0; nextInQueue();}));
+  main.appendChild(w); backBtn();
+}
+function stepInjuredNum(){
+  numPad("負傷者の人数","名",v=>{S.injured=v; nextInQueue();});
+}
+function stepEvacAsk(){
+  eyebrow("共通確認 2/2");
+  question("避難は<br>必要ですか？");
+  spacer();
+  const w=el("div","btns row2");
+  w.appendChild(btn("必要","big no",()=>{S.evac=true; go(stepEvacPt);}));
+  w.appendChild(btn("不要","big yes",()=>{S.evac=false; go(stepPt);}));
+  main.appendChild(w); backBtn();
+}
+
+/* ── 避難ルート ── */
+function stepEvacPt(){ numPad("避難する患者の人数","名",v=>{S.evacPt=v; go(stepEvacStaff);},"避難 1/4"); }
+function stepEvacStaff(){ numPad("避難する職員の人数","名",v=>{S.evacStaff=v; go(stepEvacRoute);},"避難 2/4"); }
+function stepEvacRoute(o){
+  eyebrow("避難 3/4");
+  question("避難経路は<br>確保できていますか？");
+  if(o&&o.retry) alertBox("落下物・倒壊物を確認し、必要に応じて除去してください。確保できたら「はい」を押してください。");
+  spacer();
+  const w=el("div","btns row2");
+  w.appendChild(btn("はい","big yes",()=>go(stepEvacDone)));
+  w.appendChild(btn("いいえ","big no",()=>render(stepEvacRoute,{retry:true})));
+  main.appendChild(w); backBtn();
+}
+function stepEvacDone(o){
+  eyebrow("避難 4/4");
+  question("避難は<br>完了しましたか？");
+  if(o&&o.retry) alertBox("避難を継続してください。完了したら「はい」を押してください。");
+  spacer();
+  const w=el("div","btns row2");
+  w.appendChild(btn("はい","big yes",()=>go(stepEvacReport)));
+  w.appendChild(btn("いいえ","big no",()=>render(stepEvacDone,{retry:true})));
+  main.appendChild(w); backBtn();
+}
+
+/* ── 機器確認ルート ── */
+function stepPt(){ numPad("現在の対応患者数","名",v=>{S.pt=v; go(stepStaff);},"機器確認 ─ 体制"); }
+function stepStaff(){ numPad("現在の放射線科職員数","名",v=>{S.staff=v; go(stepDevice,{i:0});},"機器確認 ─ 体制"); }
+function stepDevice(o){
+  const i=o.i;
+  const name=DEVICES[i];
+  eyebrow(`機器確認 ${i+1}/${DEVICES.length}`);
+  question(`${name}は<br>正常ですか？`);
+  spacer();
+  const w=el("div","btns row2");
+  const next=()=>{ (i+1<DEVICES.length) ? go(stepDevice,{i:i+1}) : go(stepSummary); };
+  w.appendChild(btn("正常","big ok",()=>{S.dev[name]="正常"; next();}));
+  w.appendChild(btn("異常","big ng",()=>{S.dev[name]="異常"; next();}));
+  main.appendChild(w);
+  // 戻る（直前の機器 or 職員数へ）
+  const b=btn("← ひとつ戻る","ghost",()=>{
+    if(i===0) render(stepStaff); else render(stepDevice,{i:i-1});
+  });
+  b.style.width="100%"; backBar.appendChild(b);
+}
+
+/* ================= テンキー ================= */
+function numPad(title,unit,onDone,eb){
+  eyebrow(eb||"人数入力");
+  question(title);
+  let v="";
+  const disp=el("div","numVal",`0 <span class="unit">${unit}</span>`);
+  main.appendChild(disp);
+  spacer();
+  const pad=el("div","pad");
+  const keys=["1","2","3","4","5","6","7","8","9","C","0","⌫"];
+  keys.forEach(k=>{
+    const b=el("button",k==="C"||k==="⌫"?"del":"",k);
+    b.onclick=()=>{
+      if(k==="C") v="";
+      else if(k==="⌫") v=v.slice(0,-1);
+      else if(v.length<3) v=(v==="0")?k:v+k;
+      disp.innerHTML=`${v||"0"} <span class="unit">${unit}</span>`;
+    };
+    pad.appendChild(b);
+  });
+  main.appendChild(pad);
+  const w=el("div","btns");
+  w.appendChild(btn("決定","primary",()=>onDone(parseInt(v||"0",10))));
+  main.appendChild(w); backBtn();
+}
+
+/* ================= まとめ・報告 ================= */
+function disasterLabel(){ return S.disasters.map(d=>NAMES[d]).join("・"); }
+function injLabel(){ return S.injured===0?"0名（なし）":`${S.injured}名`; }
+function now(){
+  const d=new Date(), z=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}/${z(d.getMonth()+1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+
+function stepSummary(){
+  eyebrow("報告前の最終確認");
+  question("内容を確認してください");
+  main.appendChild(el("div","editHint","各行をタップすると修正できます"));
+  const r=el("div","report");
+  r.appendChild(el("h2",null,"✅ 確認用まとめ"));
+  r.appendChild(rowStatic("災害",disasterLabel()));
+  r.appendChild(rowTap("対応患者",S.pt+"名",()=>numPadEdit("現在の対応患者数",v=>{S.pt=v;render(stepSummary);})));
+  r.appendChild(rowTap("放射線科職員",S.staff+"名",()=>numPadEdit("現在の放射線科職員数",v=>{S.staff=v;render(stepSummary);})));
+  r.appendChild(rowTap("負傷者",injLabel(),()=>numPadEdit("負傷者の人数",v=>{S.injured=v;render(stepSummary);})));
+  if(S.disasters.includes(2)) r.appendChild(rowStatic("初期消火",S.fireExt));
+  if(S.disasters.includes(3)) r.appendChild(rowStatic("機器移動",S.devMove));
+  DEVICES.forEach(name=>{
+    const v=S.dev[name];
+    const row=rowTap(name,v,()=>{ S.dev[name]=(v==="正常"?"異常":"正常"); render(stepSummary); });
+    row.querySelector(".v").classList.add(v==="正常"?"statusOK":"statusNG");
+    r.appendChild(row);
+  });
+  main.appendChild(r);
+  const w=el("div","btns");
+  w.appendChild(btn("報告文を作成する","primary",()=>go(stepFullReport)));
+  main.appendChild(w);
+  backBtn();
+}
+function rowStatic(k,v){
+  const row=el("div","rrow");
+  row.appendChild(el("span","k",k)); row.appendChild(el("span","v",v));
+  return row;
+}
+function rowTap(k,v,fn){
+  const row=el("div","rrow tap");
+  row.appendChild(el("span","k",k)); row.appendChild(el("span","v",v));
+  row.onclick=fn;
+  return row;
+}
+function numPadEdit(title,onDone){
+  render(function(){ numPad(title,"名",onDone,"修正入力"); });
+}
+
+function reportRows(evacMode){
+  const rows=[["災害",disasterLabel()],["避難",evacMode?"必要":"不要"]];
+  if(evacMode){
+    rows.push(["避難患者",S.evacPt+"名"],["避難職員",S.evacStaff+"名"],["負傷者",injLabel()]);
+  }else{
+    rows.push(["対応患者",S.pt+"名"],["放射線科職員",S.staff+"名"],["負傷者",injLabel()]);
+  }
+  if(S.disasters.includes(2)) rows.push(["初期消火",S.fireExt]);
+  if(S.disasters.includes(3)) rows.push(["機器移動",S.devMove]);
+  if(evacMode){ rows.push(["避難完了","完了"]); }
+  else{ DEVICES.forEach(n=>rows.push([n,S.dev[n]])); }
+  return rows;
+}
+function reportText(evacMode){
+  const lines=["📋 所属長報告"];
+  reportRows(evacMode).forEach(([k,v])=>lines.push(`${k}：${v}`));
+  lines.push("診療技術部門長へ報告してください。");
+  lines.push(`（${now()} 作成）`);
+  return lines.join("\n");
+}
+function renderReport(evacMode){
+  eyebrow(evacMode?"避難報告":"全体報告");
+  question("所属長へ報告してください");
+  const r=el("div","report");
+  r.appendChild(el("h2",null,"📋 所属長報告"));
+  reportRows(evacMode).forEach(([k,v])=>{
+    const row=rowStatic(k,v);
+    if(v==="正常") row.querySelector(".v").classList.add("statusOK");
+    if(v==="異常") row.querySelector(".v").classList.add("statusNG");
+    r.appendChild(row);
+  });
+  r.appendChild(el("div","footMsg","診療技術部門長へ報告してください"));
+  r.appendChild(el("div","stamp",now()+" 作成"));
+  main.appendChild(r);
+  const w=el("div","btns");
+  w.appendChild(btn("報告文をコピー","primary",()=>copyReport(evacMode)));
+  if(navigator.share){
+    w.appendChild(btn("共有（メール・メッセージ）","big",()=>{
+      navigator.share({title:"所属長報告",text:reportText(evacMode)}).catch(()=>{});
+    }));
+  }
+  w.appendChild(btn("最初からやり直す","ghost",()=>{ if(confirm("入力内容を消去して最初に戻ります。よろしいですか？")) init(); }));
+  main.appendChild(w);
+}
+function stepFullReport(){ renderReport(false); progFill.style.width="100%"; }
+function stepEvacReport(){ renderReport(true); progFill.style.width="100%"; }
+
+function copyReport(evacMode){
+  const t=reportText(evacMode);
+  const done=()=>{ const c=document.getElementById("copied"); c.classList.add("show"); setTimeout(()=>c.classList.remove("show"),1600); };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(done).catch(()=>fallbackCopy(t,done));
+  }else fallbackCopy(t,done);
+}
+function fallbackCopy(t,done){
+  const ta=document.createElement("textarea");
+  ta.value=t; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand("copy"); done(); }catch(e){}
+  document.body.removeChild(ta);
+}
+
+init();
+</script>
+</body>
+</html>
