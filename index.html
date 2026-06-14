@@ -123,6 +123,18 @@
     border:1.5px solid var(--accent);
   }
   .stamp{font-size:12px; color:var(--faint); text-align:right; margin-top:10px}
+  /* ───── メモ欄 ───── */
+  .memoWrap{margin-bottom:14px}
+  .memoLabel{font-size:13px; font-weight:800; color:var(--sub); letter-spacing:.08em; margin-bottom:8px}
+  textarea.memo{
+    width:100%; min-height:110px; resize:vertical;
+    background:var(--card); color:var(--text);
+    border:1.5px solid var(--line); border-radius:14px;
+    padding:14px 16px; font-family:inherit; font-size:16px; line-height:1.7;
+    outline:none; -webkit-appearance:none;
+  }
+  textarea.memo:focus{border-color:var(--accent)}
+  textarea.memo::placeholder{color:var(--faint)}
   .copied{
     position:fixed; left:50%; bottom:90px; transform:translateX(-50%);
     background:var(--ok); color:#0B1018; font-weight:800; font-size:14px;
@@ -155,16 +167,18 @@
 /* ================= 状態 ================= */
 const COLORS={1:"#F5A524",2:"#F0443C",3:"#3D8BFD",4:"#9B7BF5"};
 const NAMES={1:"地震",2:"火災",3:"浸水",4:"停電"};
-const DEVICES=["白コンセント","赤コンセント","CT","一般撮影","2カテ","3カテ","4カテ","5カテ","ポータブル","電子カルテ"];
+const DEVICES=["白コンセント","赤コンセント","CT","一般撮影","2カテ","3カテ","4カテ","5カテ","ポータブル（2F）","ポータブル（救急外来）","電子カルテ"];
 
 let S; // state
 function init(){
   S={
     disasters:[], injured:null, evac:null,
     fireExt:"対象外", devMove:"対象外",
-    evacPt:null, evacStaff:null,
-    pt:null, staff:null,
+    walk:null, assist:null, stretcher:null, // 独歩・護送・担送
+    evacPt:null, evacStaff:null, evacRadStaff:null,
+    pt:null, staff:null, radStaff:null,
     dev:{}, // 機器名→正常/異常
+    memo:"", // 自由記述メモ
     queue:[], idx:0, history:[],
   };
   render(stepSelect);
@@ -198,10 +212,12 @@ function setProg(){
 }
 
 let currentStep=null;
+let currentOpt={};
 function render(stepFn, opt){
   currentStep=stepFn;
+  currentOpt=opt||{};
   main.innerHTML=""; backBar.innerHTML="";
-  stepFn(opt||{});
+  stepFn(currentOpt);
   setTheme(); setProg();
   main.scrollTop=0;
 }
@@ -214,11 +230,25 @@ function spacer(){main.appendChild(el("div","spacer"));}
 function btn(label,cls,fn){const b=el("button",cls,label); b.onclick=fn; return b;}
 function backBtn(){
   if(S.history.length===0) return;
-  const b=btn("← ひとつ戻る","ghost",()=>{ const prev=S.history.pop(); render(prev.fn,prev.opt); });
-  b.style.width="100%"; backBar.appendChild(b);
+  const wrap=el("div",null);
+  wrap.style.display="grid";
+  wrap.style.gridTemplateColumns="1fr auto";
+  wrap.style.gap="10px";
+  const b=btn("← ひとつ戻る","ghost",goBack);
+  const home=btn("最初へ","ghost",()=>render(stepResetConfirm));
+  home.style.minWidth="92px";
+  wrap.appendChild(b); wrap.appendChild(home);
+  backBar.appendChild(wrap);
+}
+function goBack(){
+  if(S.history.length===0) return;
+  const prev=S.history.pop();
+  S.idx=prev.idx; // キュー位置も復元
+  render(prev.fn, prev.opt);
 }
 function go(nextFn,opt){
-  S.history.push({fn:currentStep,opt:null});
+  // 現在の画面（ステップ・opt・キュー位置）を履歴に保存
+  S.history.push({fn:currentStep, opt:currentOpt, idx:S.idx});
   render(nextFn,opt);
 }
 
@@ -260,7 +290,6 @@ function buildQueue(){
   if(S.disasters.includes(2)) q.push(stepFire);
   if(S.disasters.includes(3)) q.push(stepFlood);
   if(S.disasters.includes(4)) q.push(stepPower);
-  q.push(stepInjured);
   q.push(stepEvacAsk);
   S.queue=q; S.idx=0;
 }
@@ -335,35 +364,68 @@ function stepPower(o){
 }
 
 /* ================= 共通フロー ================= */
-function stepInjured(){
-  eyebrow("共通確認 1/2");
-  question("負傷者は<br>いますか？");
-  spacer();
-  const w=el("div","btns row2");
-  w.appendChild(btn("いる","big no",()=>go(stepInjuredNum)));
-  w.appendChild(btn("いない","big yes",()=>{S.injured=0; nextInQueue();}));
-  main.appendChild(w); backBtn();
-}
-function stepInjuredNum(){
-  numPad("負傷者の人数","名",v=>{S.injured=v; nextInQueue();});
-}
 function stepEvacAsk(){
-  eyebrow("共通確認 2/2");
+  eyebrow("共通確認");
   question("避難は<br>必要ですか？");
   spacer();
   const w=el("div","btns row2");
-  w.appendChild(btn("必要","big no",()=>{S.evac=true; go(stepEvacPt);}));
-  w.appendChild(btn("不要","big yes",()=>{S.evac=false; go(stepPt);}));
+  w.appendChild(btn("必要","big no",()=>{S.evac=true; go(stepEvacWalk);}));
+  w.appendChild(btn("不要","big yes",()=>{S.evac=false; go(stepInjured);}));
   main.appendChild(w); backBtn();
 }
 
+/* ── 機器確認ルート（避難不要）の負傷者確認 ── */
+function stepInjured(){
+  eyebrow("負傷者確認");
+  question("負傷者は<br>いますか？");
+  spacer();
+  const w=el("div","btns row2");
+  w.appendChild(btn("いる","big no",()=>go(stepWalk)));
+  w.appendChild(btn("いない","big yes",()=>{
+    S.injured=0; S.walk=0; S.assist=0; S.stretcher=0; go(stepPt);
+  }));
+  main.appendChild(w); backBtn();
+}
+function stepWalk(){
+  numPad("独歩（歩ける）の人数","名",v=>{S.walk=v; go(stepAssist);},"負傷者 1/3");
+}
+function stepAssist(){
+  numPad("護送（介助で移動）の人数","名",v=>{S.assist=v; go(stepStretcher);},"負傷者 2/3");
+}
+function stepStretcher(){
+  numPad("担送（担架等）の人数","名",v=>{
+    S.stretcher=v;
+    S.injured=(S.walk||0)+(S.assist||0)+(S.stretcher||0);
+    go(stepPt);
+  },"負傷者 3/3");
+}
+
 /* ── 避難ルート ── */
-function stepEvacPt(){ numPad("避難する患者の人数","名",v=>{S.evacPt=v; go(stepEvacStaff);},"避難 1/4"); }
-function stepEvacStaff(){ numPad("避難する職員の人数","名",v=>{S.evacStaff=v; go(stepEvacRoute);},"避難 2/4"); }
+/* 避難患者は独歩・護送・担送の合計で構成する */
+function stepEvacWalk(){
+  numPad("避難する独歩（歩ける）の人数","名",v=>{S.walk=v; go(stepEvacAssist);},"避難 1/6");
+}
+function stepEvacAssist(){
+  numPad("避難する護送（介助で移動）の人数","名",v=>{S.assist=v; go(stepEvacStretcher);},"避難 2/6");
+}
+function stepEvacStretcher(){
+  numPad("避難する担送（担架等）の人数","名",v=>{
+    S.stretcher=v;
+    S.injured=(S.walk||0)+(S.assist||0)+(S.stretcher||0);
+    S.evacPt=S.injured; // 避難患者数＝独歩＋護送＋担送
+    go(stepEvacStaff);
+  },"避難 3/6");
+}
+function stepEvacStaff(){ numPad("避難する職員の人数","名",v=>{S.evacStaff=v; go(stepEvacRadStaff);},"避難 4/6"); }
+function stepEvacRadStaff(){
+  numPad("うち放射線科職員の人数","名",v=>{S.evacRadStaff=v; go(stepEvacRoute);},"避難 5/6",
+    {max:S.evacStaff, maxMsg:`避難職員（${S.evacStaff}名）を超えています。${S.evacStaff}名以下で入力してください。`});
+}
 function stepEvacRoute(o){
-  eyebrow("避難 3/4");
+  eyebrow("避難 6/6");
   question("避難経路は<br>確保できていますか？");
-  if(o&&o.retry) alertBox("落下物・倒壊物を確認し、必要に応じて除去してください。確保できたら「はい」を押してください。");
+  alertBox("避難経路：正面玄関／職員出入り口／救急外来口");
+  if(o&&o.retry) note("落下物・倒壊物を確認し、必要に応じて除去してください。確保できたら「はい」を押してください。");
   spacer();
   const w=el("div","btns row2");
   w.appendChild(btn("はい","big yes",()=>go(stepEvacDone)));
@@ -371,7 +433,7 @@ function stepEvacRoute(o){
   main.appendChild(w); backBtn();
 }
 function stepEvacDone(o){
-  eyebrow("避難 4/4");
+  eyebrow("避難完了確認");
   question("避難は<br>完了しましたか？");
   if(o&&o.retry) alertBox("避難を継続してください。完了したら「はい」を押してください。");
   spacer();
@@ -382,10 +444,21 @@ function stepEvacDone(o){
 }
 
 /* ── 機器確認ルート ── */
-function stepPt(){ numPad("現在の対応患者数","名",v=>{S.pt=v; go(stepStaff);},"機器確認 ─ 体制"); }
-function stepStaff(){ numPad("現在の放射線科職員数","名",v=>{S.staff=v; go(stepDevice,{i:0});},"機器確認 ─ 体制"); }
+function stepPt(){ numPad("現在の対応患者数","名",v=>{S.pt=v; go(stepStaff);},"体制確認 1/3"); }
+function stepStaff(){
+  numPad("現場の職員数","名",v=>{S.staff=v; go(stepRadStaff);},"体制確認 2/3");
+}
+function stepRadStaff(){
+  numPad("うち放射線科職員の人数","名",v=>{
+    S.radStaff=v;
+    // 浸水で機器を2階へ移動済みの場合は個別の機器確認をスキップ
+    if(S.devMove==="実施"){ go(stepSummary); }
+    else{ go(stepDevice,{i:0}); }
+  },"体制確認 3/3",
+    {max:S.staff, maxMsg:`現場職員（${S.staff}名）を超えています。${S.staff}名以下で入力してください。`});
+}
 function stepDevice(o){
-  const i=o.i;
+  const i=(o && typeof o.i==="number") ? o.i : 0;
   const name=DEVICES[i];
   eyebrow(`機器確認 ${i+1}/${DEVICES.length}`);
   question(`${name}は<br>正常ですか？`);
@@ -395,20 +468,22 @@ function stepDevice(o){
   w.appendChild(btn("正常","big ok",()=>{S.dev[name]="正常"; next();}));
   w.appendChild(btn("異常","big ng",()=>{S.dev[name]="異常"; next();}));
   main.appendChild(w);
-  // 戻る（直前の機器 or 職員数へ）
-  const b=btn("← ひとつ戻る","ghost",()=>{
-    if(i===0) render(stepStaff); else render(stepDevice,{i:i-1});
-  });
-  b.style.width="100%"; backBar.appendChild(b);
+  backBtn();
 }
 
 /* ================= テンキー ================= */
-function numPad(title,unit,onDone,eb){
+function numPad(title,unit,onDone,eb,opt){
+  opt=opt||{};
   eyebrow(eb||"人数入力");
   question(title);
   let v="";
   const disp=el("div","numVal",`0 <span class="unit">${unit}</span>`);
   main.appendChild(disp);
+  const errBox=el("div","alert","");
+  errBox.style.display="none";
+  errBox.style.borderColor="var(--ng)";
+  errBox.style.color="#FFB1A8";
+  main.appendChild(errBox);
   spacer();
   const pad=el("div","pad");
   const keys=["1","2","3","4","5","6","7","8","9","C","0","⌫"];
@@ -419,18 +494,29 @@ function numPad(title,unit,onDone,eb){
       else if(k==="⌫") v=v.slice(0,-1);
       else if(v.length<3) v=(v==="0")?k:v+k;
       disp.innerHTML=`${v||"0"} <span class="unit">${unit}</span>`;
+      errBox.style.display="none";
     };
     pad.appendChild(b);
   });
   main.appendChild(pad);
   const w=el("div","btns");
-  w.appendChild(btn("決定","primary",()=>onDone(parseInt(v||"0",10))));
+  w.appendChild(btn("決定","primary",()=>{
+    const num=parseInt(v||"0",10);
+    if(typeof opt.max==="number" && num>opt.max){
+      errBox.textContent=opt.maxMsg||`${opt.max}名以下で入力してください。`;
+      errBox.style.display="block";
+      return; // 上限超過時は進めない
+    }
+    onDone(num);
+  }));
   main.appendChild(w); backBtn();
 }
 
 /* ================= まとめ・報告 ================= */
 function disasterLabel(){ return S.disasters.map(d=>NAMES[d]).join("・"); }
 function injLabel(){ return S.injured===0?"0名（なし）":`${S.injured}名`; }
+function injBreakdown(){ return `独歩${S.walk||0}・護送${S.assist||0}・担送${S.stretcher||0}`; }
+function injOneLine(){ return S.injured===0 ? "0名（なし）" : `${S.injured}名（${injBreakdown()}）`; }
 function now(){
   const d=new Date(), z=n=>String(n).padStart(2,"0");
   return `${d.getFullYear()}/${z(d.getMonth()+1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;
@@ -444,16 +530,28 @@ function stepSummary(){
   r.appendChild(el("h2",null,"✅ 確認用まとめ"));
   r.appendChild(rowStatic("災害",disasterLabel()));
   r.appendChild(rowTap("対応患者",S.pt+"名",()=>numPadEdit("現在の対応患者数",v=>{S.pt=v;render(stepSummary);})));
-  r.appendChild(rowTap("放射線科職員",S.staff+"名",()=>numPadEdit("現在の放射線科職員数",v=>{S.staff=v;render(stepSummary);})));
-  r.appendChild(rowTap("負傷者",injLabel(),()=>numPadEdit("負傷者の人数",v=>{S.injured=v;render(stepSummary);})));
+  r.appendChild(rowTap("現場職員",S.staff+"名",()=>numPadEdit("現場の職員数",v=>{
+    S.staff=v;
+    if(S.radStaff>v) S.radStaff=v; // 放射線科職員が超えないよう補正
+    render(stepSummary);
+  })));
+  r.appendChild(rowTap("うち放射線科職員",S.radStaff+"名",()=>numPadEdit("うち放射線科職員の人数",v=>{S.radStaff=v;render(stepSummary);},
+    {max:S.staff, maxMsg:`現場職員（${S.staff}名）を超えています。${S.staff}名以下で入力してください。`})));
+  r.appendChild(rowStatic("負傷者",injOneLine()));
   if(S.disasters.includes(2)) r.appendChild(rowStatic("初期消火",S.fireExt));
   if(S.disasters.includes(3)) r.appendChild(rowStatic("機器移動",S.devMove));
-  DEVICES.forEach(name=>{
-    const v=S.dev[name];
-    const row=rowTap(name,v,()=>{ S.dev[name]=(v==="正常"?"異常":"正常"); render(stepSummary); });
-    row.querySelector(".v").classList.add(v==="正常"?"statusOK":"statusNG");
-    r.appendChild(row);
-  });
+  if(S.devMove==="実施"){
+    const nt=el("div","note","※ 機器は2階へ移動済みのため、個別の機器確認は省略しています。");
+    nt.style.padding="6px 2px"; r.appendChild(nt);
+  }
+  if(S.devMove!=="実施"){
+    DEVICES.forEach(name=>{
+      const v=S.dev[name];
+      const row=rowTap(name,v,()=>{ S.dev[name]=(v==="正常"?"異常":"正常"); render(stepSummary); });
+      row.querySelector(".v").classList.add(v==="正常"?"statusOK":"statusNG");
+      r.appendChild(row);
+    });
+  }
   main.appendChild(r);
   const w=el("div","btns");
   w.appendChild(btn("報告文を作成する","primary",()=>go(stepFullReport)));
@@ -471,52 +569,72 @@ function rowTap(k,v,fn){
   row.onclick=fn;
   return row;
 }
-function numPadEdit(title,onDone){
-  render(function(){ numPad(title,"名",onDone,"修正入力"); });
+function numPadEdit(title,onDone,opt){
+  render(function(){ numPad(title,"名",onDone,"修正入力",opt); });
 }
 
 function reportRows(evacMode){
   const rows=[["災害",disasterLabel()],["避難",evacMode?"必要":"不要"]];
   if(evacMode){
-    rows.push(["避難患者",S.evacPt+"名"],["避難職員",S.evacStaff+"名"],["負傷者",injLabel()]);
+    rows.push(["避難患者",injOneLine()],["避難職員",S.evacStaff+"名"],["うち放射線科職員",S.evacRadStaff+"名"]);
   }else{
-    rows.push(["対応患者",S.pt+"名"],["放射線科職員",S.staff+"名"],["負傷者",injLabel()]);
+    rows.push(["対応患者",S.pt+"名"],["現場職員",S.staff+"名"],["うち放射線科職員",S.radStaff+"名"]);
+    rows.push(["負傷者",injOneLine()]);
   }
   if(S.disasters.includes(2)) rows.push(["初期消火",S.fireExt]);
   if(S.disasters.includes(3)) rows.push(["機器移動",S.devMove]);
   if(evacMode){ rows.push(["避難完了","完了"]); }
-  else{ DEVICES.forEach(n=>rows.push([n,S.dev[n]])); }
+  else if(S.devMove!=="実施"){ DEVICES.forEach(n=>rows.push([n,S.dev[n]])); }
   return rows;
 }
 function reportText(evacMode){
-  const lines=["📋 所属長報告"];
+  const lines=["📋 診療技術部門長報告"];
   reportRows(evacMode).forEach(([k,v])=>lines.push(`${k}：${v}`));
-  lines.push("診療技術部門長へ報告してください。");
+  if(S.memo && S.memo.trim()!==""){
+    lines.push(`メモ：${S.memo.trim()}`);
+  }
   lines.push(`（${now()} 作成）`);
   return lines.join("\n");
 }
 function renderReport(evacMode){
   eyebrow(evacMode?"避難報告":"全体報告");
-  question("所属長へ報告してください");
+  question("診療技術部門長へ<br>報告してください");
   const r=el("div","report");
-  r.appendChild(el("h2",null,"📋 所属長報告"));
+  r.appendChild(el("h2",null,"📋 診療技術部門長報告"));
   reportRows(evacMode).forEach(([k,v])=>{
     const row=rowStatic(k,v);
     if(v==="正常") row.querySelector(".v").classList.add("statusOK");
     if(v==="異常") row.querySelector(".v").classList.add("statusNG");
     r.appendChild(row);
   });
-  r.appendChild(el("div","footMsg","診療技術部門長へ報告してください"));
+  // 自由記述メモ欄
+  const mw=el("div","memoWrap");
+  mw.appendChild(el("div","memoLabel","メモ（特記事項・応援要請・補足など）"));
+  const ta=document.createElement("textarea");
+  ta.className="memo";
+  ta.placeholder="例：担送1名は意識レベル低下、応援要請中。CTは再起動で復旧見込み。";
+  ta.value=S.memo||"";
+  ta.addEventListener("input",()=>{ S.memo=ta.value; });
+  ta.addEventListener("focus",()=>{ setTimeout(()=>ta.scrollIntoView({behavior:"smooth",block:"center"}),300); });
+  mw.appendChild(ta);
+  r.appendChild(mw);
   r.appendChild(el("div","stamp",now()+" 作成"));
   main.appendChild(r);
   const w=el("div","btns");
-  w.appendChild(btn("報告文をコピー","primary",()=>copyReport(evacMode)));
-  if(navigator.share){
-    w.appendChild(btn("共有（メール・メッセージ）","big",()=>{
-      navigator.share({title:"所属長報告",text:reportText(evacMode)}).catch(()=>{});
-    }));
-  }
-  w.appendChild(btn("最初からやり直す","ghost",()=>{ if(confirm("入力内容を消去して最初に戻ります。よろしいですか？")) init(); }));
+  w.appendChild(btn("最初からやり直す","ghost",()=>render(stepResetConfirm)));
+  main.appendChild(w);
+}
+function stepResetConfirm(){
+  eyebrow("確認");
+  question("最初に戻りますか？");
+  note("入力した内容はすべて消去されます。");
+  spacer();
+  const w=el("div","btns");
+  w.appendChild(btn("最初に戻る","big ng",()=>init()));
+  w.appendChild(btn("やめる（前の画面へ）","ghost",()=>{
+    if(S.history.length>0){ goBack(); }
+    else init();
+  }));
   main.appendChild(w);
 }
 function stepFullReport(){ renderReport(false); progFill.style.width="100%"; }
